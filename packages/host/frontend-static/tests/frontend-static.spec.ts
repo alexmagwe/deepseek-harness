@@ -37,6 +37,7 @@ async function loadComposition(): Promise<Context> {
   const distIndex = join(dist, 'index.html')
   await writeFile(distIndex, '<head></head><body>shell</body>')
   await writeFile(join(dist, 'app.js'), 'export {}')
+  await writeFile(join(dist, 'icon-192.png'), 'PNG')
   await writeFile(join(dist, 'blob.bin'), 'BLOB')
   await writeFile(join(dist, 'manifest.webmanifest'), '{}')
   await mkdir(join(dist, 'empty'))
@@ -130,6 +131,7 @@ describe('real Loader composition', () => {
       type: 'application/manifest+json',
       body: '{}',
     })
+    expect(await request(port, '/icon-192.png')).toMatchObject({ status: 200, type: 'image/png', body: 'PNG' })
     expect(await request(port, '/app.js', { method: 'HEAD' })).toEqual({
       status: 200,
       type: 'text/javascript; charset=utf-8',
