@@ -284,6 +284,10 @@ async function bootPreview(origin: string, browser: Browser): Promise<void> {
   try {
     await page.goto(`${origin}/preview.html`, { waitUntil: 'domcontentloaded' })
     await page.getByRole('heading', { name: 'Choose Preview data' }).waitFor()
+    // The build splices the preview marker ahead of every module script, so
+    // the app entry can never race the bootstrap and register the asset-cache
+    // service worker on this deployment.
+    expect(await page.evaluate(() => (globalThis as { __DSH_PREVIEW_PAGE__?: unknown }).__DSH_PREVIEW_PAGE__)).toBe(true)
     expect(await page.locator('input[name="preview-source"][value="vfs-example"]').isChecked()).toBe(true)
     expect(await page.getByText('Empty environment', { exact: true }).count()).toBe(1)
     expect(await page.getByText('WebFS directory', { exact: true }).count()).toBe(1)
@@ -312,6 +316,11 @@ async function bootPreview(origin: string, browser: Browser): Promise<void> {
     await configureLater.click()
     await page.locator('[data-composer-input][data-placeholder="Describe what you want to build... / commands, @ files or sessions"]')
       .waitFor({ timeout: 30_000 })
+
+    // The worker-transport bootstrap must suppress service-worker
+    // registration: the preview payload owns bundle bytes itself and may be
+    // mounted under arbitrary origins and base directories.
+    expect(await page.evaluate(() => window.navigator.serviceWorker.controller)).toBeNull()
 
     const exercised = await page.evaluate(async () => {
       type Result<T> = { result: { ok: true; value: T } | { ok: false; error: { code: string; message: string } } }

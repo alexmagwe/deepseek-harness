@@ -60,7 +60,12 @@ function emitPreviewPage(): Plugin {
       const page = await readFile(src('./dist/index.html'), 'utf8')
       const anchor = page.indexOf('<script type="module"')
       if (anchor === -1) throw new Error('vite: built index.html lost its module entry tag')
-      const tag = `<script type="module" crossorigin src="./${bootstrapFile}"></script>`
+      // The preview marker precedes every module script, so the app entry sees
+      // it deterministically and never registers the asset-cache service
+      // worker on a deployment that owns its bundle bytes. A classic inline
+      // script runs during parsing; module scripts — including the bootstrap,
+      // whose top-level await does NOT order against this entry — run later.
+      const tag = `<script>globalThis.__DSH_PREVIEW_PAGE__ = true</script><script type="module" crossorigin src="./${bootstrapFile}"></script>`
       await writeFile(src('./dist/preview.html'), `${page.slice(0, anchor)}${tag}${page.slice(anchor)}`)
     },
   }
@@ -154,13 +159,21 @@ export default defineConfig({
         // module tag of one page into a single synthetic entry, and only a
         // separate input keeps the shared page chunks bootstrap-free.
         bootstrap: src('./src/preview.ts'),
+        // Standalone service-worker entry: registration needs a fixed root
+        // filename, and the worker must import no shared chunk so the emitted
+        // file parses as a classic service-worker script.
+        sw: src('./src/sw.ts'),
       },
       output: {
         // The worker-preview surface groups under dist/preview/ (the page
         // itself stays at dist/preview.html), so the published payload can
         // exclude it as one directory.
         entryFileNames(chunk): string {
-          return chunk.name === 'bootstrap' ? 'preview/[name]-[hash].js' : 'assets/[name]-[hash].js'
+          // The service worker rides a fixed root filename — hashed names
+          // would strand already-registered workers.
+          if (chunk.name === 'bootstrap') return 'preview/[name]-[hash].js'
+          if (chunk.name === 'sw') return 'sw.js'
+          return 'assets/[name]-[hash].js'
         },
         // Output layout: the two main chunks stay at assets/ root; lazy
         // @shikijs/langs grammar chunks group under assets/langs/; fonts
