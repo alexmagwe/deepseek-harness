@@ -33,6 +33,9 @@ async function bench() {
   const remote = new TestRemote(runtime.ctx)
   Object.assign(remote, { directoryPicker })
   runtime.ctx.provide('remote.directoryPicker', directoryPicker as never)
+  // The staleness flow never dispatches a slash command; the service only has
+  // to be there for ui-workspace's inject to settle.
+  runtime.ctx.provide('commandUi', { register: () => () => {} } as never)
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)

@@ -1,5 +1,5 @@
 ---
-description: "dsh Web 客户端的共享 Workspace 浏览器与选择器插件：分组或扁平的会话行、添加/重命名/重排序、搜索、fork、归档，以及目录流选取子 slot。"
+description: "dsh Web 客户端的共享 Workspace 浏览器与选择器插件：分组或扁平的会话行、添加/重命名/重排序、搜索、fork、归档、/new composer 快捷方式，以及目录流选取子 slot。"
 kind: "package-reference"
 ---
 
@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-用侧边栏浏览 Workspace 及其 Session、重排它们并新建会话；在 Session Intent 主视觉区用选择器为新会话选择 Workspace。打开的 Workspace 默认显示五条非空白 Session，并在首条提示词落地前把当前选中的空白**新会话**作为一条临时额外行。**展开其余**会显示隐藏条目；关闭再打开 Workspace 会恢复该折叠投影。
+用侧边栏浏览 Workspace 及其 Session、重排它们并新建会话；在 Session Intent 主视觉区用选择器为新会话选择 Workspace。在 composer 中键入 `/new` 可从键盘触发同一新建会话动作：复用当前 Workspace 的空白 Session 或新建一个（回退到最近的 Workspace），且在被寻址的 subagent 会话中不显示。打开的 Workspace 默认显示五条非空白 Session，并在首条提示词落地前把当前选中的空白**新会话**作为一条临时额外行。**展开其余**会显示隐藏条目；关闭再打开 Workspace 会恢复该折叠投影。
 
 ### 重排序与视图选项
 

@@ -45,6 +45,9 @@
       "path": "../ui-sidebar"
     },
     {
+      "path": "../ui-commands"
+    },
+    {
       "path": "../ui-conversation"
     },
     {

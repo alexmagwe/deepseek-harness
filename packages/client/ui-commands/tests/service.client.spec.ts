@@ -14,7 +14,7 @@ import { createScope, scopeOf } from '@deepseek-ai/dsh-api-session-controller/cl
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError, TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ClientSessionContext, ConsumeTokenRequest, InputTriggerPick, InputTriggerSource, SubmitImageAttachment } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import type { CommandContribution, CommandDecoration, CommandUiSpec, SelectOption } from '../src/client/contract.ts'
+import type { ActionSpec, CommandContribution, CommandDecoration, PopupSelectSpec, SelectOption } from '../src/client/contract.ts'
 import type { CommandDescriptor } from '../src/client/directory.ts'
 import { CommandUiRuntime } from '../src/client/service.ts'
 
@@ -155,7 +155,7 @@ function menuPick(source: InputTriggerSource, name: string, session: ClientSessi
   return source.onPick(pick)
 }
 
-const themeUi = (over: Partial<CommandUiSpec> = {}): CommandUiSpec => ({
+const themeUi = (over: Partial<PopupSelectSpec> = {}): PopupSelectSpec => ({
   kind: 'popupSelect',
   options: () => Promise.resolve([{ id: 'dark', label: 'Dark' }]),
   onSelect: () => undefined,
@@ -167,6 +167,20 @@ const themeContribution = (over: Partial<CommandContribution> = {}): CommandCont
   description: 'client popup kind',
   available: () => true,
   ui: themeUi(),
+  ...over,
+})
+
+const bellUi = (over: Partial<ActionSpec> = {}): ActionSpec => ({
+  kind: 'action',
+  run: () => undefined,
+  ...over,
+})
+
+const bellContribution = (over: Partial<CommandContribution> = {}): CommandContribution => ({
+  name: 'bell',
+  description: 'client action kind',
+  available: () => true,
+  ui: bellUi(),
   ...over,
 })
 
@@ -561,6 +575,91 @@ describe('matchEnter envelope policy (images)', () => {
     const outcome = source.matchSpace!(proj('s1'), '/goal')
     if (outcome === undefined || outcome === 'handled' || !('claim' in outcome)) throw new Error('expected claim')
     await expect(outcome.claim.submit('x', new Context(), [])).resolves.toEqual({ kind: 'success' })
+  })
+})
+
+describe('action contributions (immediate client actions)', () => {
+  const signal = () => new AbortController().signal
+
+  it('menu pick runs the action with the open-time projection, consumes the span, and opens no popup', async () => {
+    const { command, source, mint, warm, executeCalls } = await bench()
+    const run = vi.fn((_s: ClientSessionContext) => undefined)
+    command.register(bellContribution({ ui: bellUi({ run }) }))
+    const scope = mint('s1')
+    const consumes: ConsumeTokenRequest[] = []
+    scope.ctx.on('slash/input-consume-token', (r) => {
+      consumes.push(r)
+      return true
+    })
+    await warm(proj('s1'))
+    expect(menuPick(source, 'bell', proj('s1'), 5)).toBe('handled')
+    expect(run).toHaveBeenCalledExactlyOnceWith(proj('s1'))
+    expect(consumes).toEqual([{ guard: { kind: 'span', span: { start: 0, end: 5, draftRev: 3 } } }])
+    expect(command.popupFor(scope.ctx).state.getSnapshot().open).toBe(false)
+    expect(executeCalls).toEqual([])
+  })
+
+  it('bare enter runs the action under the bare-token guard; an argued line falls through untouched', async () => {
+    const { command, source, mint, executeCalls } = await bench()
+    const run = vi.fn()
+    command.register(bellContribution({ ui: bellUi({ run }) }))
+    const scope = mint('s1')
+    const consumes: ConsumeTokenRequest[] = []
+    scope.ctx.on('slash/input-consume-token', (r) => {
+      consumes.push(r)
+      return true
+    })
+    await expect(source.matchEnter!(proj('s1'), '/bell', signal(), { images: 0 })).resolves.toBe('handled')
+    expect(run).toHaveBeenCalledExactlyOnceWith(proj('s1'))
+    expect(consumes).toEqual([{ guard: { kind: 'bare-token', token: '/bell' } }])
+    await expect(source.matchEnter!(proj('s1'), '/bell now', signal(), { images: 0 })).resolves.toBeUndefined()
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(executeCalls).toEqual([])
+  })
+
+  it('a bare enter carrying images refuses before the action runs', async () => {
+    const { command, source, warm } = await bench()
+    const run = vi.fn()
+    command.register(bellContribution({ ui: bellUi({ run }) }))
+    await warm(proj('s1'))
+    await expect(source.matchEnter!(proj('s1'), '/bell', signal(), { images: 1 }))
+      .rejects.toThrow('command:notice.imagesUnsupported{"command":"bell"}')
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it('a throwing action is contained: the error routes to the composer notice channel', async () => {
+    const { command, source, mint, warm, notices } = await bench()
+    command.register(bellContribution({
+      ui: bellUi({ run: () => { throw new Error('action boom') } }),
+    }))
+    mint('s1')
+    await warm(proj('s1'))
+    expect(menuPick(source, 'bell', proj('s1'))).toBe('handled')
+    expect(notices).toEqual([{ scope: sid('s1'), level: 'error', text: 'action boom' }])
+  })
+
+  it('an unavailable action falls through: the menu pick misses and the enter line reaches the default sink', async () => {
+    const { command, source, warm } = await bench()
+    command.register(bellContribution({ available: () => false }))
+    await warm(proj('s1'))
+    expect(menuPick(source, 'bell', proj('s1'))).toBeUndefined() // no host 'bell' either
+    await expect(source.matchEnter!(proj('s1'), '/bell', signal(), { images: 0 })).resolves.toBeUndefined()
+  })
+
+  it('space never claims an action name', async () => {
+    const { command, source, warm } = await bench()
+    command.register(bellContribution())
+    await warm(proj('s1'))
+    expect(source.matchSpace!(proj('s1'), '/bell')).toBeUndefined()
+  })
+
+  it('the action row rides the same candidate synthesis: no hint, so it answers inline queries too', async () => {
+    const { command, source } = await bench()
+    command.register(bellContribution({ name: 'new', description: 'Start a new session in the current workspace' }))
+    const rows = await source.candidates!(proj('s1'), {
+      query: 'new', position: 'inline', drilled: false, signal: new AbortController().signal,
+    })
+    expect(rows).toEqual([{ name: 'new', description: 'Start a new session in the current workspace' }])
   })
 })
 

@@ -26,16 +26,32 @@ export interface SelectOption {
 }
 
 /**
- * Business registration for the popupSelect command kind. Data is
- * self-served: options/onSelect use the business package's own protocol.
- * The shell component is owned by ui-commands; business never sees it. Both
- * callbacks receive the ClientSessionContext captured at popup open.
+ * The popupSelect half of {@link CommandUiSpec}: a transient option picker.
+ * Data is self-served: options/onSelect use the business package's own
+ * protocol. The shell component is owned by ui-commands; business never sees
+ * it. Both callbacks receive the ClientSessionContext captured at popup open.
  */
-export type CommandUiSpec = {
+export interface PopupSelectSpec {
   readonly kind: 'popupSelect'
   options(session: ClientSessionContext, signal: AbortSignal): Promise<readonly SelectOption[]>
   onSelect(option: SelectOption, session: ClientSessionContext): void | Promise<void>
 }
+
+/**
+ * The action half of {@link CommandUiSpec}: an immediate client-local
+ * behavior with no popup and no input. The pick/bare-enter token is consumed
+ * and `run` executes with the session context captured at dispatch; a
+ * throwing `run` routes to the session's composer-notice channel. Argued
+ * lines (`/name args`) fall through to the default sink; image-carrying
+ * submissions refuse exactly like the popup kind.
+ */
+export interface ActionSpec {
+  readonly kind: 'action'
+  run(session: ClientSessionContext): void
+}
+
+/** A client command's UI behavior: a popupSelect picker or an immediate action. */
+export type CommandUiSpec = PopupSelectSpec | ActionSpec
 
 /**
  * One client-owned command contribution: a slash-menu entry whose behavior
@@ -50,7 +66,7 @@ export interface CommandContribution {
   readonly description: string
   /** Capability filter, called with a fresh projection per candidate pass. */
   available(session: ClientSessionContext): boolean
-  /** The command's UI behavior (this phase: popupSelect only). */
+  /** The command's UI behavior (popupSelect picker or immediate action). */
   readonly ui: CommandUiSpec
 }
 
@@ -68,8 +84,8 @@ export interface CommandDecoration {
   readonly name: string
   /** Capability filter, called with a fresh projection per bare invocation. */
   available(session: ClientSessionContext): boolean
-  /** The bare-invocation UI (this phase: popupSelect only). */
-  readonly ui: CommandUiSpec
+  /** The bare-invocation UI (a popupSelect picker; decorations never carry actions). */
+  readonly ui: PopupSelectSpec
 }
 
 /** The `ctx.commandUi` service face visible to business packages. */

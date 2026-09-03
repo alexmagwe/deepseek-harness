@@ -21,7 +21,7 @@ import type {
   CandidateRequest, ClientSessionContext, CommandClaim, PickOutcome, InputTriggerCandidate, InputTriggerPick,
   SubmitEnvelope, SubmitImageAttachment, SubmitOutcome,
 } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import type { CommandContribution, CommandDecoration, CommandUiContract } from './contract.ts'
+import type { ActionSpec, CommandContribution, CommandDecoration, CommandUiContract, PopupSelectSpec } from './contract.ts'
 import type { CommandDescriptor } from './directory.ts'
 import { CommandDirectory } from './directory.ts'
 import { PopupSelectController } from './popup.ts'
@@ -268,11 +268,16 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
     )
   }
 
-  /** Decision table, menu column: contribution/decorated-host → popup; host input → claim; host bare → detached execute. */
+  /** Decision table, menu column: action/popup contribution, decorated-host → popup; host input → claim; host bare → detached execute. */
   private dispatch(pick: InputTriggerPick): PickOutcome {
     const name = pick.candidate.name
     const contribution = this.live.contributions.get(name)
     if (contribution !== undefined && contribution.available(pick.session)) {
+      if (contribution.ui.kind === 'action') {
+        this.consumeVia(pick.session.sessionId, { via: 'menu', span: pick.span })
+        this.runAction(contribution.ui, pick.session)
+        return 'handled'
+      }
       this.openPopup(name, contribution.ui, pick.session, { via: 'menu', span: pick.span })
       return 'handled'
     }
@@ -336,6 +341,11 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
     if (contribution !== undefined && contribution.available(session)) {
       if (!bare) return undefined
       if (envelope.images > 0) refuseImages()
+      if (contribution.ui.kind === 'action') {
+        this.consumeVia(session.sessionId, { via: 'enter', token })
+        this.runAction(contribution.ui, session)
+        return 'handled'
+      }
       this.openPopup(name, contribution.ui, session, { via: 'enter', token })
       return 'handled'
     }
@@ -363,16 +373,29 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
     return 'handled'
   }
 
-  /** Open the session's popup for one contribution or decoration (menu pick / bare enter). */
+  /** Open the session's popup for one popupSelect contribution or decoration (menu pick / bare enter). */
   private openPopup(
     name: string,
-    ui: CommandContribution['ui'],
+    ui: PopupSelectSpec,
     session: ClientSessionContext,
     segment: TokenSegment,
   ): void {
     const actx = this.scopeFor(session.sessionId)
     if (actx === undefined) return
     this.popupFor(actx).open(name, ui, session, segment)
+  }
+
+  /**
+   * Run one action-kind contribution with contained failure routing: no
+   * popup shell owns its errors, so a throwing `run` lands on the session's
+   * composer-notice channel (scope gone = the attempt dies with it).
+   */
+  private runAction(ui: ActionSpec, session: ClientSessionContext): void {
+    try {
+      ui.run(session)
+    } catch (error) {
+      this.noticeFor(session.sessionId, 'error', error instanceof Error ? error.message : String(error))
+    }
   }
 
   /** Build the leadingInput claim: token `/name ` + the command.execute submit transaction. */

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { RemoteError, TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import type { CommandContribution } from '@deepseek-ai/dsh-client-ui-commands/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
@@ -58,11 +59,17 @@ async function bench() {
     searchResultLimit: 20,
     binding,
     fork,
+    subagentAddress: vi.fn((id: string) => id === 'sub'
+      ? { parentSessionId: 'parent', childSessionId: id, mode: 'continuable' as const }
+      : undefined),
   } as never)
   const pickDirectory = vi.fn(() => Promise.resolve({ ok: true as const, value: '/projects/picked' }))
   const directoryPicker = { pick: pickDirectory }
   Object.assign(new TestRemote(ctx), { directoryPicker })
   ctx.provide('remote.directoryPicker', directoryPicker as never)
+  const unregister = vi.fn()
+  const registerCommand = vi.fn<(contribution: CommandContribution) => () => void>(() => unregister)
+  ctx.provide('commandUi', { register: registerCommand } as never)
   const locale = new LocaleRuntime(ctx)
   // These specs assert the shipped Chinese copy. There is no jsdom `window`
   // in this lane, so browser-language detection never runs and the locale
@@ -72,6 +79,7 @@ async function bench() {
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, rename,
     insertSessionBefore, open, clear, search, renameSession, binding, fork, pickDirectory,
+    registerCommand, unregister,
   }
 }
 
@@ -90,8 +98,30 @@ describe('ui-workspace apply', () => {
 
   it('declares the services it drives', () => {
     expect(inject).toEqual([
-      'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker',
+      'slots', 'sessions', 'workspaces', 'locale', 'commandUi', 'remote', 'remote.directoryPicker',
     ])
+  })
+
+  it('registers the /new action contribution and frees it on teardown', async () => {
+    const b = await bench()
+    declare(b.slots, 'sidebar.workspaces')
+    const fiber = await b.ctx.plugin({ inject: [...inject], apply }).await()
+    expect(b.registerCommand).toHaveBeenCalledTimes(1)
+    const contribution = b.registerCommand.mock.calls[0]![0]
+    expect(contribution.name).toBe('new')
+    // Registry-held copy resolved through the bound workspace translator (zh bench locale).
+    expect(contribution.description).toBe('在当前工作区新建会话')
+    // Addressed subagent sessions hide the entry; ordinary sessions keep it.
+    expect(contribution.available({ sessionId: 'sub' } as never)).toBe(false)
+    expect(contribution.available({ sessionId: 'ordinary' } as never)).toBe(true)
+    // The action drives the shared startSession verb with no argument: the
+    // current-Workspace inheritance (recent fallback) owns the target.
+    const startSession = vi.spyOn(b.ctx.uiWorkspace, 'startSession').mockImplementation(() => undefined)
+    if (contribution.ui.kind !== 'action') throw new Error('expected the action kind')
+    contribution.ui.run({ sessionId: 'ordinary' } as never)
+    expect(startSession).toHaveBeenLastCalledWith()
+    await fiber.dispose()
+    expect(b.unregister).toHaveBeenCalledTimes(1)
   })
 
   it('registers browser and pickers for declarations arriving before or after apply', async () => {

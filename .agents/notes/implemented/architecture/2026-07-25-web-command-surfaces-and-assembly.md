@@ -56,7 +56,7 @@ The pipeline was ready but command knowledge had no landing spot: host-side `ctx
 
 ## Consequences
 
-- Shipping a business command = a host registration plus one client `command.register` (popupSelect) or zero registration (execute/leadingInput derive automatically), with zero skeleton changes; the cost is that the three-kind semantics concentrate in ui-commands, and a hypothetical fourth kind means changing it.
+- Shipping a business command = a host registration plus one client `command.register` (popupSelect) or zero registration (execute/leadingInput derive automatically), with zero skeleton changes; the cost is that the three-kind semantics concentrate in ui-commands, and a hypothetical fourth kind means changing it. That fourth kind now exists: the [action kind and the /new shortcut](../feature/2026-09-02-web-command-action-kind.md) extend the contribution contract.
 - The resident directory cache plus push invalidation buys zero-latency menus and reliable enter adjudication; the cost is three invalidation paths (the change frame, reconnect, the epoch guard) that all need tests pinning them.
 - sessionId addressing puts the host's per-agent effective directory (global + scoped shadows) straight on the wire, with the client presenting it as-is.
 - Known gaps: the popupSelect shell has no shipped business consumer yet (model selection and its kin arrive with the host `selectModel` work in live-mutation shape, serving as the onboarding template then); the queue's second cut (per-item Inbox operations), rich result cards, and roster configurability sit in the ledger awaiting their triggers.
