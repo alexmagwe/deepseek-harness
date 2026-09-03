@@ -1,17 +1,20 @@
 /**
- * Workspace plugin, browser half. Two registrations: WorkspaceBrowser fills
+ * Workspace plugin, browser half. Three registrations: WorkspaceBrowser fills
  * the sidebar shell's `sidebar.workspaces` hole (the whole browsing region),
- * and WorkspacePicker fills the conversation hero's picker hole
- * (`conversation.hero.workspace` — both hero forms). Both read real Host
- * Workspaces through the global useWorkspaces hook, and each declares its
- * own `single` directory-flow child hole for the composed picker package's
- * client half (see the contract module doc). Export discipline:
+ * WorkspacePicker fills the conversation hero's picker hole
+ * (`conversation.hero.workspace` — both hero forms), and the `/new` action
+ * contribution rides the shared client command surface as the composer
+ * shortcut for the sidebar's New Session action. Both slot registrations read
+ * real Host Workspaces through the global useWorkspaces hook, and each
+ * declares its own `single` directory-flow child hole for the composed picker
+ * package's client half (see the contract module doc). Export discipline:
  * packages/client/AGENTS.md.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { IWorkspaces, WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { CommandUiContract } from '@deepseek-ai/dsh-client-ui-commands/client'
 import type { HostObservable, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the Controller service merges.
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
@@ -60,13 +63,13 @@ const NS = 'workspace'
  * declaration through `slots.inject()` instead of assuming order.
  */
 export const inject = [
-  'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker',
+  'slots', 'sessions', 'workspaces', 'locale', 'commandUi', 'remote', 'remote.directoryPicker',
 ]
 
 /**
- * Register the browser and picker once their slot declarations are on the
- * ledger. Inject factories return plain callbacks; data reads use the
- * framework's global hooks.
+ * Register the browser, picker, and /new contribution. The browser and picker
+ * go up once their slot declarations are on the ledger; inject factories
+ * return plain callbacks and data reads use the framework's global hooks.
  * @param ctx - client root context.
  */
 export function apply(ctx: Context): void {
@@ -76,6 +79,29 @@ export function apply(ctx: Context): void {
     ctx, ctx.remote.directoryPicker, workspaces, sessions)
   ctx.slots.provideRoot({ hooks: { workspaces: workspaces.list } })
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-workspace: dictionaries')
+
+  // The /new menu description is registry-held text: it reads t() once at
+  // registration and refreshes only on re-registration, not on locale change.
+  const t = ctx.locale.bind(NS)
+
+  // The /new composer shortcut rides the shared client command surface. It
+  // drives the same startSession action as the sidebar's New Session button
+  // (blank-Session reuse or creation in the current Workspace, recent
+  // fallback) and stays hidden for addressed subagent sessions like other
+  // Agent-bound entries. Navigation is per-client, so this is a client action
+  // contribution, never a host command or a session-log event.
+  ctx.inject(['commandUi'], (scope: Context) => {
+    const command = scope.get('commandUi') as CommandUiContract
+    scope.effect(() => command.register({
+      name: 'new',
+      description: t('command.new.description'),
+      available: session => sessions.subagentAddress(session.sessionId) === undefined,
+      ui: {
+        kind: 'action',
+        run: () => { uiWorkspace.startSession() },
+      },
+    }), 'ui-workspace: /new contribution')
+  })
 
   const searchSessions: WorkspaceBrowserInjected['searchSessions'] = async (query, signal) => {
     const result = await sessions.search(query, signal)

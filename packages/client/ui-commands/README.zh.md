@@ -1,5 +1,5 @@
 ---
-description: "Web GUI 的客户端命令 API：/ 命令 source、三类派发、会话级命令目录，以及面向业务包的 popupSelect 注册；供斜杠命令的用户与维护者阅读。"
+description: "Web GUI 的客户端命令 API：/ 命令 source、三类派发、会话级命令目录，以及面向业务包的 popupSelect/action 注册；供斜杠命令的用户与维护者阅读。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-在 composer 中键入 `/` 命令会打开匹配的表面——已注册的弹窗、宿主命令的输入或直接执行——命令行绝不会被静默降级为普通提示词。业务包经 `ctx.commandUi` 贡献命令表面：注册 popupSelect 贡献项（`/model`、`/permission`），或用选择器装饰既有宿主命令，宿主保留其目录行与参数声明。空格与回车对照会话目录解析命令行：带 `input` 的宿主描述符是 `leadingInput`，注册了 `CommandUiSpec` 的是 `popupSelect`，其余全部是 `execute`。
+在 composer 中键入 `/` 命令会打开匹配的表面——已注册的弹窗、立即执行的客户端动作、宿主命令的输入或直接执行——命令行绝不会被静默降级为普通提示词。业务包经 `ctx.commandUi` 贡献命令表面：注册 popupSelect 贡献项（`/model`、`/permission`）、立即执行的 action 贡献项（`/new`），或用选择器装饰既有宿主命令，宿主保留其目录行与参数声明。空格与回车对照会话目录解析命令行：带 `input` 的宿主描述符是 `leadingInput`，注册了 `CommandUiSpec` 的是 `popupSelect` 或 `action`，其余全部是 `execute`。
 
 ## 目录
 
@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 种类与装饰
 
-贡献项是客户端自有命令——与宿主命令同名会明确报错。装饰为**已存在的**宿主命令添加裸调用弹窗：宿主命令保留其目录行、参数声明与生命周期记账，被装饰的名字在会话目录中无宿主行时永不触发。菜单查询按顺序且不区分大小写地模糊匹配命令名的子序列；前缀排名最高。
+贡献项是客户端自有命令——与宿主命令同名会明确报错。`action` 贡献项在菜单选中或裸回车时立即执行：其 token 被消费，不产生宿主 RPC 或会话日志事件，带参数的行（`/name args`）落入默认通道，抛错的 action 路由到 composer 通知。装饰为**已存在的**宿主命令添加裸调用弹窗：宿主命令保留其目录行、参数声明与生命周期记账，被装饰的名字在会话目录中无宿主行时永不触发。菜单查询按顺序且不区分大小写地模糊匹配命令名的子序列；前缀排名最高。
 
 ### 带图提交
 

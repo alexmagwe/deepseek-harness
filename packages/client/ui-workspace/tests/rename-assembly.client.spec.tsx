@@ -39,6 +39,9 @@ async function createRuntime(): Promise<SlotTestRuntime> {
   const directoryPicker = {}
   Object.assign(new TestRemote(runtime.ctx), { directoryPicker })
   runtime.ctx.provide('remote.directoryPicker', directoryPicker as never)
+  // The rename flow never dispatches a slash command; the service only has to
+  // be there for ui-workspace's inject to settle.
+  runtime.ctx.provide('commandUi', { register: () => () => {} } as never)
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
