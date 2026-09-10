@@ -22,6 +22,8 @@ async function bench() {
   const insertSessionBefore = vi.fn(async () => ({}))
   const open = vi.fn()
   const clear = vi.fn()
+  const selectPanel = vi.fn()
+  ctx.provide('layout', { selectPanel, beginNavigation: () => new AbortController().signal })
   const search = vi.fn(async () => ({
     ok: true as const,
     value: { items: [{ sessionId: 'session' as never, snippet: 'match' }], hasMore: false },
@@ -78,7 +80,7 @@ async function bench() {
   ctx.provide('locale', locale)
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, rename,
-    insertSessionBefore, open, clear, search, renameSession, binding, fork, pickDirectory,
+    insertSessionBefore, open, clear, selectPanel, search, renameSession, binding, fork, pickDirectory,
     registerCommand, unregister,
   }
 }
@@ -98,7 +100,7 @@ describe('ui-workspace apply', () => {
 
   it('declares the services it drives', () => {
     expect(inject).toEqual([
-      'slots', 'sessions', 'workspaces', 'locale', 'commandUi', 'remote', 'remote.directoryPicker',
+      'slots', 'sessions', 'workspaces', 'locale', 'commandUi', 'remote', 'remote.directoryPicker', 'layout',
     ])
   })
 
@@ -109,8 +111,9 @@ describe('ui-workspace apply', () => {
     expect(b.registerCommand).toHaveBeenCalledTimes(1)
     const contribution = b.registerCommand.mock.calls[0]![0]
     expect(contribution.name).toBe('new')
-    // Registry-held copy resolved through the bound workspace translator (zh bench locale).
-    expect(contribution.description).toBe('在当前工作区新建会话')
+    // Registry-held copy resolved per candidate pass through the bound
+    // workspace translator (zh bench locale).
+    expect(contribution.description()).toBe('在当前工作区新建会话')
     // Addressed subagent sessions hide the entry; ordinary sessions keep it.
     expect(contribution.available({ sessionId: 'sub' } as never)).toBe(false)
     expect(contribution.available({ sessionId: 'ordinary' } as never)).toBe(true)
