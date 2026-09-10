@@ -42,6 +42,38 @@ function numberOf(model: ModelDraft, key: string): number | undefined {
   return typeof value === 'number' ? value : undefined
 }
 
+/** The modality a row adds when it declares that it accepts images. */
+const IMAGE_MODALITY = 'image'
+
+/**
+ * Whether one row declares image input. A row that declares nothing reads as
+ * unchecked, the same way an unset capacity reads as blank: this page holds
+ * only the drafted rows, so the installed catalog entry and the route's
+ * `defaultInput` that would answer instead are not readable here.
+ * @param model - one drafted model row.
+ * @returns true when the row's own `input` list includes images.
+ */
+function acceptsImages(model: ModelDraft): boolean {
+  const input = model['input']
+  return Array.isArray(input) && input.includes(IMAGE_MODALITY)
+}
+
+/**
+ * The `input` list one row stores for a chosen image capability.
+ *
+ * Both states are written explicitly rather than removing the field when images
+ * are off. An absent list means "ask the catalog, then the route", and a route
+ * whose `defaultInput` admits images would then re-admit them for a model the
+ * user just declared text-only — the over-claiming failure this declaration
+ * exists to prevent, since an image is committed to the session log before the
+ * provider can refuse it.
+ * @param images - whether the row accepts images.
+ * @returns the modality list to store.
+ */
+function inputForImages(images: boolean): string[] {
+  return images ? ['text', IMAGE_MODALITY] : ['text']
+}
+
 /** What an interrogation needs, taken from the live form. */
 export interface ProbeTarget {
   /** Settings namespace whose adapter family answers. */
@@ -209,7 +241,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
     })
   }
 
-  const patch = (index: number, next: Record<string, string | number | undefined>): void => {
+  const patch = (index: number, next: Record<string, string | number | readonly string[] | undefined>): void => {
     onChange(models.map((model, at) => {
       if (at !== index) return model
       // Rebuilt rather than spread over: an emptied optional field has to leave
@@ -432,6 +464,17 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
                     aria-label={`${t('modelMaxTokens')} ${index + 1}`}
                     disabled={disabled}
                     onChange={(event) => { editCapacity(index, 'maxTokens', event.target.value) }}
+                  />
+                </label>
+                <label className={styles['modelField']}>
+                  <span className={styles['modelFieldLabel']}>{t('modelAcceptsImages')}</span>
+                  <input
+                    className={styles['modelCheckbox']}
+                    type="checkbox"
+                    checked={acceptsImages(model)}
+                    aria-label={`${t('modelAcceptsImages')} ${index + 1}`}
+                    disabled={disabled}
+                    onChange={(event) => { patch(index, { input: inputForImages(event.target.checked) }) }}
                   />
                 </label>
               </div>

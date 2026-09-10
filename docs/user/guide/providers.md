@@ -32,7 +32,7 @@ Under **Model catalog**, choose **Fetch available models** to query the base URL
 
 A model you enter by hand is treated as text-only until it says otherwise, because nothing can ask an endpoint which modalities it accepts. Attaching an image to such a model is refused before it is sent, naming the model.
 
-A vision model on a custom provider therefore needs one line. The form has no field for it; add `input` to the model in `$DSH_HOME/settings.yaml`:
+A vision model on a custom provider therefore needs one declaration: open the model's **Model details** fold in the Models page and check **Accepts images**, which writes `input: [text, image]` for that model. Clearing the checkbox writes `input: [text]` rather than removing the field, so a route whose `defaultInput` admits images does not re-admit them for a model you declared text-only. The same field can be written directly in `$DSH_HOME/settings.yaml`:
 
 ```yaml
 llm-pi-ai:
@@ -129,7 +129,7 @@ If a saved default names a provider that was deleted, the composer displays **Se
 - **The gateway refuses every request although the key and URL are right** — Its request shape differs from OpenAI's. Start with `compat.supportsDeveloperRole: false` and `compat.maxTokensField: max_tokens` on the route.
 - **Only reasoning models fail** — pi-ai sends their system prompt as the `developer` role, which the gateway rejects. Set `compat.supportsDeveloperRole: false`.
 - **A compat switch is refused as having no value** — A key written with nothing after the colon. Give it a value, or remove the key to keep the installed catalog's.
-- **An image is refused before sending** — The model declares no image modality. Give a custom provider's model `input: [text, image]`; DeepSeek's own chat-completions route is text-only and cannot be configured otherwise.
+- **An image is refused before sending** — The model declares no image modality. Check **Accepts images** on a custom provider's model, or give it `input: [text, image]`; DeepSeek's own chat-completions route is text-only and cannot be configured otherwise.
 - **The provider rejects a request carrying an image** — The model declares images its endpoint does not actually serve. Remove `image` from whichever list granted it — the model's `input`, or the route's `defaultInput` — then start a new session: the attached image stays in the session log, so the same request repeats until the session moves off it.
 
 ## Advanced configuration

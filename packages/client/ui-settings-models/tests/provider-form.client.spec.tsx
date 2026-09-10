@@ -352,6 +352,60 @@ describe('model list editing', () => {
     expect(screen.getByLabelText<HTMLInputElement>(`${en.modelMaxTokens} 1`).value).toBe('256K')
   })
 
+  it('declares image input on one row without touching its neighbours', async () => {
+    const { mutate } = await mountSection({
+      providers: {
+        openai: {
+          baseURL: 'https://proxy.example/v1',
+          models: [{ id: 'plain' }, { id: 'vision', input: ['text', 'image'] }],
+        },
+      },
+    })
+    openEditor('openai')
+    expandModel(1)
+
+    // A row that declares nothing reads as text-only here: this page cannot see
+    // the catalog entry or the route default that would answer instead.
+    const plain = screen.getByLabelText<HTMLInputElement>(`${en.modelAcceptsImages} 1`)
+    expect(plain.checked).toBe(false)
+    fireEvent.click(plain)
+    expect(plain.checked).toBe(true)
+    expandModel(2)
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelAcceptsImages} 2`).checked).toBe(true)
+
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalled() })
+    expect(firstMutate(mutate).ops[0]?.value).toEqual([
+      { id: 'plain', input: ['text', 'image'] },
+      { id: 'vision', input: ['text', 'image'] },
+    ])
+  })
+
+  it('stores text-only explicitly when a model stops accepting images', async () => {
+    const { mutate } = await mountSection({
+      providers: {
+        openai: {
+          baseURL: 'https://proxy.example/v1',
+          models: [{ id: 'vision', input: ['text', 'image'] }],
+        },
+      },
+    })
+    openEditor('openai')
+    expandModel(1)
+
+    const box = screen.getByLabelText<HTMLInputElement>(`${en.modelAcceptsImages} 1`)
+    expect(box.checked).toBe(true)
+    fireEvent.click(box)
+    expect(box.checked).toBe(false)
+    fireEvent.click(screen.getByText(en.apply))
+
+    await waitFor(() => { expect(mutate).toHaveBeenCalled() })
+    // The list is written rather than removed: an absent one asks the catalog
+    // and then the route, and a route whose default admits images would
+    // re-admit them for the model the user just declared text-only.
+    expect(firstMutate(mutate).ops[0]?.value).toEqual([{ id: 'vision', input: ['text'] }])
+  })
+
   it('edits one row of several and lets a cleared capacity leave the profile', async () => {
     const { mutate } = await mountSection({
       providers: { openai: { baseURL: 'https://proxy.example/v1', models: [{ id: 'first' }, { id: 'second' }] } },
@@ -803,6 +857,25 @@ describe('hand-declared providers', () => {
       expectedRevision: 7,
     })
     expect(set).toHaveBeenCalledWith('ACME_GATEWAY_API_KEY', 'gw-key')
+  })
+
+  it('creates a model that declares image input', async () => {
+    const { mutate } = mountCard()
+
+    fireEvent.change(screen.getByLabelText(en.customRoute), { target: { value: 'acme-gateway' } })
+    fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: 'https://gateway.acme.example/v1' } })
+    fireEvent.click(screen.getByRole('button', { name: en.addModel }))
+    fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'acme-vision' } })
+    expandModel(1)
+    fireEvent.click(screen.getByLabelText(`${en.modelAcceptsImages} 1`))
+    fireEvent.click(screen.getByText(en.create))
+
+    await waitFor(() => { expect(mutate).toHaveBeenCalled() })
+    expect(firstMutate(mutate).ops[0]?.value).toMatchObject({
+      api: 'openai-completions',
+      baseURL: 'https://gateway.acme.example/v1',
+      models: [{ id: 'acme-vision', input: ['text', 'image'] }],
+    })
   })
 
   it('scopes each card to fields a provider can actually own', async () => {

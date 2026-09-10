@@ -514,6 +514,15 @@
   line-height: 18px;
 }
 
+/* The one control in the fold that is not a text field: a stretched checkbox
+   would fill the whole grid cell, and its own size is the OS default. */
+.modelCheckbox {
+  align-self: flex-start;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
 .modelEmpty {
   padding: 12px;
   border: 1px dashed var(--dsw-alias-border-l3);
